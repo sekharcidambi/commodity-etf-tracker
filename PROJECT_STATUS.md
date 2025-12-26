@@ -195,12 +195,28 @@ This project is **completely independent** from the patient-discharge healthcare
 - ✅ No shared code or dependencies
 - ✅ Commodity requirements removed from patient-discharge
 
+## GitHub Repository
+
+- **GitHub Account**: sekharcidambi
+- **Repository**: commodity-etf-tracker
+- **Branch**: claude/commodity-dashboard-signals-q2G91
+- **Remote**: Configured (http://127.0.0.1:30366/git/sekharcidambi/commodity-etf-tracker)
+- **Status**: Repository needs to be created on GitHub before pushing
+
 ## Next Steps
 
-1. **Set up GitHub Repository**
-   - Create remote repository
-   - Configure git remote origin
-   - Push to GitHub
+1. **Create GitHub Repository**
+   ```bash
+   # Create the repository on GitHub:
+   # Visit: https://github.com/new
+   # Repository name: commodity-etf-tracker
+   # Description: Commodity ETF tracking system with automated flow data and trading signals
+   # Visibility: Private (recommended) or Public
+
+   # Then push the code:
+   cd /home/user/commodity-etf-tracker
+   git push -u origin claude/commodity-dashboard-signals-q2G91
+   ```
 
 2. **Launch Development Environment**
    - `docker-compose up -d` to start PostgreSQL/TimescaleDB
