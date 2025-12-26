@@ -7,7 +7,7 @@ from sqlalchemy import insert, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from loguru import logger
 
-from app.models import ETFPrice, CommodityPrice, Ticker
+from app.models import ETFPrice, CommodityPrice, Ticker, ETFFlow, InvestorSegmentFlow, InstitutionalHolding
 from app.db.database import AsyncSessionLocal
 
 
@@ -198,6 +198,219 @@ class DataStorageService:
         except Exception as e:
             logger.error(f"Error updating ticker info: {e}")
             return False
+
+    async def save_etf_flows(self, flows_data: List[dict]) -> int:
+        """
+        Save ETF flow data to database
+
+        Args:
+            flows_data: List of flow records with fields:
+                       week_ending, ticker, net_flow, aum, shares_outstanding,
+                       premium_discount, source
+
+        Returns:
+            Number of records saved
+        """
+        if not flows_data:
+            logger.warning("Empty flow data, nothing to save")
+            return 0
+
+        try:
+            async with AsyncSessionLocal() as session:
+                stmt = pg_insert(ETFFlow).values(flows_data)
+                stmt = stmt.on_conflict_do_update(
+                    index_elements=['week_ending', 'ticker'],
+                    set_={
+                        'net_flow': stmt.excluded.net_flow,
+                        'aum': stmt.excluded.aum,
+                        'shares_outstanding': stmt.excluded.shares_outstanding,
+                        'premium_discount': stmt.excluded.premium_discount,
+                        'source': stmt.excluded.source,
+                    }
+                )
+
+                await session.execute(stmt)
+                await session.commit()
+
+                logger.success(f"Saved {len(flows_data)} ETF flow records")
+                return len(flows_data)
+
+        except Exception as e:
+            logger.error(f"Error saving ETF flows: {e}")
+            raise
+
+    async def save_institutional_holdings(self, holdings_data: List[dict]) -> int:
+        """
+        Save institutional holdings (13F data) to database
+
+        Args:
+            holdings_data: List of holdings records with fields:
+                          filing_date, cik, institution_name, ticker,
+                          shares_held, market_value, weight_pct
+
+        Returns:
+            Number of records saved
+        """
+        if not holdings_data:
+            logger.warning("Empty holdings data, nothing to save")
+            return 0
+
+        try:
+            async with AsyncSessionLocal() as session:
+                stmt = pg_insert(InstitutionalHolding).values(holdings_data)
+                stmt = stmt.on_conflict_do_update(
+                    index_elements=['filing_date', 'cik', 'ticker'],
+                    set_={
+                        'institution_name': stmt.excluded.institution_name,
+                        'shares_held': stmt.excluded.shares_held,
+                        'market_value': stmt.excluded.market_value,
+                        'weight_pct': stmt.excluded.weight_pct,
+                    }
+                )
+
+                await session.execute(stmt)
+                await session.commit()
+
+                logger.success(f"Saved {len(holdings_data)} institutional holding records")
+                return len(holdings_data)
+
+        except Exception as e:
+            logger.error(f"Error saving institutional holdings: {e}")
+            raise
+
+    async def save_investor_segment_flows(self, segment_flows: List[dict]) -> int:
+        """
+        Save investor segment flow data to database
+
+        Args:
+            segment_flows: List of segment flow records with fields:
+                          week_ending, segment, ticker, net_flow, estimated_aum
+
+        Returns:
+            Number of records saved
+        """
+        if not segment_flows:
+            logger.warning("Empty segment flow data, nothing to save")
+            return 0
+
+        try:
+            async with AsyncSessionLocal() as session:
+                stmt = pg_insert(InvestorSegmentFlow).values(segment_flows)
+                stmt = stmt.on_conflict_do_update(
+                    index_elements=['week_ending', 'segment', 'ticker'],
+                    set_={
+                        'net_flow': stmt.excluded.net_flow,
+                        'estimated_aum': stmt.excluded.estimated_aum,
+                    }
+                )
+
+                await session.execute(stmt)
+                await session.commit()
+
+                logger.success(f"Saved {len(segment_flows)} investor segment flow records")
+                return len(segment_flows)
+
+        except Exception as e:
+            logger.error(f"Error saving investor segment flows: {e}")
+            raise
+
+    async def get_etf_flows(
+        self,
+        ticker: str,
+        start_date: datetime | None = None,
+        end_date: datetime | None = None,
+        limit: int = 52  # Default 1 year of weekly data
+    ) -> List[dict]:
+        """
+        Retrieve ETF flow data from database
+
+        Args:
+            ticker: Ticker symbol
+            start_date: Optional start date
+            end_date: Optional end date
+            limit: Maximum number of records
+
+        Returns:
+            List of flow records
+        """
+        try:
+            async with AsyncSessionLocal() as session:
+                stmt = select(ETFFlow).where(ETFFlow.ticker == ticker)
+
+                if start_date:
+                    stmt = stmt.where(ETFFlow.week_ending >= start_date.date())
+                if end_date:
+                    stmt = stmt.where(ETFFlow.week_ending <= end_date.date())
+
+                stmt = stmt.order_by(ETFFlow.week_ending.desc()).limit(limit)
+
+                result = await session.execute(stmt)
+                flows = result.scalars().all()
+
+                return [
+                    {
+                        'week_ending': f.week_ending.isoformat(),
+                        'ticker': f.ticker,
+                        'net_flow': float(f.net_flow) if f.net_flow else None,
+                        'aum': float(f.aum) if f.aum else None,
+                        'shares_outstanding': int(f.shares_outstanding) if f.shares_outstanding else None,
+                        'premium_discount': float(f.premium_discount) if f.premium_discount else None,
+                        'source': f.source
+                    }
+                    for f in flows
+                ]
+
+        except Exception as e:
+            logger.error(f"Error retrieving ETF flows for {ticker}: {e}")
+            return []
+
+    async def get_institutional_holdings(
+        self,
+        ticker: str,
+        start_date: datetime | None = None,
+        limit: int = 20
+    ) -> List[dict]:
+        """
+        Retrieve institutional holdings for a ticker
+
+        Args:
+            ticker: Ticker symbol
+            start_date: Optional start date
+            limit: Maximum number of records
+
+        Returns:
+            List of holdings records
+        """
+        try:
+            async with AsyncSessionLocal() as session:
+                stmt = select(InstitutionalHolding).where(
+                    InstitutionalHolding.ticker == ticker
+                )
+
+                if start_date:
+                    stmt = stmt.where(InstitutionalHolding.filing_date >= start_date.date())
+
+                stmt = stmt.order_by(InstitutionalHolding.filing_date.desc()).limit(limit)
+
+                result = await session.execute(stmt)
+                holdings = result.scalars().all()
+
+                return [
+                    {
+                        'filing_date': h.filing_date.isoformat(),
+                        'cik': h.cik,
+                        'institution_name': h.institution_name,
+                        'ticker': h.ticker,
+                        'shares_held': int(h.shares_held) if h.shares_held else None,
+                        'market_value': float(h.market_value) if h.market_value else None,
+                        'weight_pct': float(h.weight_pct) if h.weight_pct else None
+                    }
+                    for h in holdings
+                ]
+
+        except Exception as e:
+            logger.error(f"Error retrieving institutional holdings for {ticker}: {e}")
+            return []
 
 
 # Singleton instance
