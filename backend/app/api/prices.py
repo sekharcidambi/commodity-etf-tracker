@@ -4,6 +4,8 @@ from fastapi import APIRouter, Query, HTTPException
 from typing import List, Optional
 from datetime import date, datetime
 
+from app.services.data_storage import data_storage
+
 router = APIRouter()
 
 
@@ -12,7 +14,8 @@ async def get_etf_prices(
     ticker: str,
     start_date: Optional[date] = Query(None, description="Start date for price data"),
     end_date: Optional[date] = Query(None, description="End date for price data"),
-    interval: str = Query("1d", description="Data interval: 1d, 1h, 5m, 1m")
+    interval: str = Query("1d", description="Data interval: 1d, 1h, 5m, 1m"),
+    limit: int = Query(100, description="Maximum number of records")
 ):
     """
     Get price data for an ETF ticker (AGQ, UGL, etc.)
@@ -20,15 +23,26 @@ async def get_etf_prices(
     - **ticker**: ETF ticker symbol
     - **start_date**: Optional start date (YYYY-MM-DD)
     - **end_date**: Optional end date (YYYY-MM-DD)
-    - **interval**: Data interval (1d=daily, 1h=hourly, 5m=5-minute, 1m=1-minute)
+    - **interval**: Data interval (1d=daily)
+    - **limit**: Maximum records to return
     """
-    # TODO: Implement database query
+    start_dt = datetime.combine(start_date, datetime.min.time()) if start_date else None
+    end_dt = datetime.combine(end_date, datetime.max.time()) if end_date else None
+
+    data = await data_storage.get_price_data(
+        ticker=ticker.upper(),
+        start_date=start_dt,
+        end_date=end_dt,
+        limit=limit
+    )
+
     return {
         "ticker": ticker.upper(),
         "interval": interval,
         "start_date": start_date,
         "end_date": end_date,
-        "data": []  # Placeholder
+        "count": len(data),
+        "data": data
     }
 
 

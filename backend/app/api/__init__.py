@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter
 
-from app.api import prices, flows, signals, analytics, tickers
+from app.api import prices, flows, signals, analytics, tickers, data_collection
 
 api_router = APIRouter()
 
@@ -34,4 +34,10 @@ api_router.include_router(
     tickers.router,
     prefix="/tickers",
     tags=["Tickers"]
+)
+
+api_router.include_router(
+    data_collection.router,
+    prefix="/data",
+    tags=["Data Collection"]
 )
