@@ -142,7 +142,6 @@ downloaded_data/
 backups/
 
 # Docker
-.dockerignore
 docker-compose.override.yml
 
 # OS
