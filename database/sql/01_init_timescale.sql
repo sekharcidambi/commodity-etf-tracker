@@ -11,13 +11,14 @@ CREATE TABLE IF NOT EXISTS commodity_prices (
     symbol VARCHAR(10) NOT NULL,  -- XAU, XAG, XPT
     instrument_type VARCHAR(20) NOT NULL,  -- SPOT, FUTURES, ETF
     contract_month DATE,          -- for futures (NULL for spot/ETF)
+    contract_month_key DATE GENERATED ALWAYS AS (COALESCE(contract_month, '1970-01-01'::DATE)) STORED,
     open DECIMAL(12,4),
     high DECIMAL(12,4),
     low DECIMAL(12,4),
     close DECIMAL(12,4),
     volume BIGINT,
     open_interest BIGINT,         -- for futures (NULL for spot/ETF)
-    PRIMARY KEY (timestamp, symbol, instrument_type, COALESCE(contract_month, '1970-01-01'))
+    PRIMARY KEY (timestamp, symbol, instrument_type, contract_month_key)
 );
 
 -- Convert to hypertable

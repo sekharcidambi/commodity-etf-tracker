@@ -24,10 +24,10 @@ cp .env.example .env
 
 ```bash
 # Start all services (PostgreSQL, Redis, Backend, Frontend)
-docker-compose up -d
+docker compose up -d
 
 # Check logs
-docker-compose logs -f
+docker compose logs -f
 ```
 
 Services will be available at:
@@ -43,7 +43,7 @@ The database will be automatically initialized with TimescaleDB schema when Post
 
 Check database:
 ```bash
-docker-compose exec postgres psql -U postgres -d commodity_tracker -c "\dt"
+docker compose exec postgres psql -U postgres -d commodity_tracker -c "\dt"
 ```
 
 You should see tables like:
@@ -115,17 +115,17 @@ DATA_COLLECTION_ENABLED=true
 
 Restart services:
 ```bash
-docker-compose restart backend
+docker compose restart backend
 ```
 
 ## Stopping Services
 
 ```bash
 # Stop all services
-docker-compose down
+docker compose down
 
 # Stop and remove volumes (clears database)
-docker-compose down -v
+docker compose down -v
 ```
 
 ## Troubleshooting
@@ -133,33 +133,33 @@ docker-compose down -v
 ### Database connection issues
 ```bash
 # Check if PostgreSQL is running
-docker-compose ps postgres
+docker compose ps postgres
 
 # View PostgreSQL logs
-docker-compose logs postgres
+docker compose logs postgres
 
 # Restart PostgreSQL
-docker-compose restart postgres
+docker compose restart postgres
 ```
 
 ### Backend not starting
 ```bash
 # View backend logs
-docker-compose logs backend
+docker compose logs backend
 
 # Rebuild backend
-docker-compose build backend
-docker-compose up -d backend
+docker compose build backend
+docker compose up -d backend
 ```
 
 ### Frontend not loading
 ```bash
 # View frontend logs
-docker-compose logs frontend
+docker compose logs frontend
 
 # Rebuild frontend
-docker-compose build frontend
-docker-compose up -d frontend
+docker compose build frontend
+docker compose up -d frontend
 ```
 
 ## Development Workflow

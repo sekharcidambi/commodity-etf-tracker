@@ -70,13 +70,29 @@ async def get_flow_segments(
     - SOVEREIGN
     - UNKNOWN
     """
-    # TODO: Implement investor segment flow query
-    return {
-        "ticker": ticker.upper(),
-        "start_date": start_date,
-        "end_date": end_date,
-        "segments": []
-    }
+    from datetime import datetime
+
+    try:
+        # Convert date to datetime if provided
+        start_dt = datetime.combine(start_date, datetime.min.time()) if start_date else None
+        end_dt = datetime.combine(end_date, datetime.min.time()) if end_date else None
+
+        segments = await data_storage.get_investor_segment_flows(
+            ticker=ticker.upper(),
+            start_date=start_dt,
+            end_date=end_dt,
+            limit=52
+        )
+
+        return {
+            "ticker": ticker.upper(),
+            "start_date": start_date.isoformat() if start_date else None,
+            "end_date": end_date.isoformat() if end_date else None,
+            "segments": segments
+        }
+    except Exception as e:
+        logger.error(f"Error retrieving investor segments for {ticker}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/{ticker}/statistics")
@@ -87,6 +103,8 @@ async def get_flow_statistics(
     """
     Get flow statistics (rolling sums, z-scores, percentiles)
     """
+    from app.services.flow_statistics import FlowStatisticsService
+
     valid_windows = ["4w", "13w", "26w", "52w"]
     if window not in valid_windows:
         raise HTTPException(
@@ -94,17 +112,16 @@ async def get_flow_statistics(
             detail=f"Invalid window. Must be one of: {', '.join(valid_windows)}"
         )
 
-    # TODO: Implement statistics calculation
-    return {
-        "ticker": ticker.upper(),
-        "window": window,
-        "current_flow": None,
-        "rolling_sum": None,
-        "z_score": None,
-        "percentile": None,
-        "mean": None,
-        "std_dev": None
-    }
+    try:
+        flow_stats_service = FlowStatisticsService()
+        stats = await flow_stats_service.calculate_flow_statistics(
+            ticker=ticker.upper(),
+            window=window
+        )
+        return stats
+    except Exception as e:
+        logger.error(f"Error calculating flow statistics for {ticker}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/{ticker}/upload")

@@ -7,7 +7,7 @@ from sqlalchemy import insert, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from loguru import logger
 
-from app.models import ETFPrice, CommodityPrice, Ticker, ETFFlow, InvestorSegmentFlow, InstitutionalHolding
+from app.models import ETFPrice, CommodityPrice, Ticker, ETFFlow, InvestorSegmentFlow, InstitutionalHolding, Signal
 from app.db.database import AsyncSessionLocal
 
 
@@ -245,8 +245,9 @@ class DataStorageService:
 
         Args:
             holdings_data: List of holdings records with fields:
-                          filing_date, cik, institution_name, ticker,
-                          shares_held, market_value, weight_pct
+                          filing_date, ticker, institution_name,
+                          shares, value_usd, percent_of_portfolio,
+                          change_shares, change_percent
 
         Returns:
             Number of records saved
@@ -259,12 +260,13 @@ class DataStorageService:
             async with AsyncSessionLocal() as session:
                 stmt = pg_insert(InstitutionalHolding).values(holdings_data)
                 stmt = stmt.on_conflict_do_update(
-                    index_elements=['filing_date', 'cik', 'ticker'],
+                    index_elements=['filing_date', 'ticker', 'institution_name'],
                     set_={
-                        'institution_name': stmt.excluded.institution_name,
-                        'shares_held': stmt.excluded.shares_held,
-                        'market_value': stmt.excluded.market_value,
-                        'weight_pct': stmt.excluded.weight_pct,
+                        'shares': stmt.excluded.shares,
+                        'value_usd': stmt.excluded.value_usd,
+                        'percent_of_portfolio': stmt.excluded.percent_of_portfolio,
+                        'change_shares': stmt.excluded.change_shares,
+                        'change_percent': stmt.excluded.change_percent,
                     }
                 )
 
@@ -299,8 +301,10 @@ class DataStorageService:
                 stmt = stmt.on_conflict_do_update(
                     index_elements=['week_ending', 'segment', 'ticker'],
                     set_={
-                        'net_flow': stmt.excluded.net_flow,
-                        'estimated_aum': stmt.excluded.estimated_aum,
+                        'estimated_flow': stmt.excluded.estimated_flow,
+                        'confidence_score': stmt.excluded.confidence_score,
+                        'data_source': stmt.excluded.data_source,
+                        'notes': stmt.excluded.notes,
                     }
                 )
 
@@ -398,12 +402,13 @@ class DataStorageService:
                 return [
                     {
                         'filing_date': h.filing_date.isoformat(),
-                        'cik': h.cik,
-                        'institution_name': h.institution_name,
                         'ticker': h.ticker,
-                        'shares_held': int(h.shares_held) if h.shares_held else None,
-                        'market_value': float(h.market_value) if h.market_value else None,
-                        'weight_pct': float(h.weight_pct) if h.weight_pct else None
+                        'institution_name': h.institution_name,
+                        'shares': int(h.shares) if h.shares else None,
+                        'value_usd': float(h.value_usd) if h.value_usd else None,
+                        'percent_of_portfolio': float(h.percent_of_portfolio) if h.percent_of_portfolio else None,
+                        'change_shares': int(h.change_shares) if h.change_shares else None,
+                        'change_percent': float(h.change_percent) if h.change_percent else None
                     }
                     for h in holdings
                 ]
@@ -411,6 +416,182 @@ class DataStorageService:
         except Exception as e:
             logger.error(f"Error retrieving institutional holdings for {ticker}: {e}")
             return []
+
+    async def get_investor_segment_flows(
+        self,
+        ticker: str,
+        start_date: datetime | None = None,
+        end_date: datetime | None = None,
+        limit: int = 52
+    ) -> dict:
+        """
+        Retrieve investor segment flow data grouped by segment
+
+        Args:
+            ticker: Ticker symbol
+            start_date: Optional start date
+            end_date: Optional end date
+            limit: Maximum number of weeks per segment
+
+        Returns:
+            Dictionary with segments as keys, each containing list of flow records
+        """
+        try:
+            async with AsyncSessionLocal() as session:
+                stmt = select(InvestorSegmentFlow).where(
+                    InvestorSegmentFlow.ticker == ticker
+                )
+
+                if start_date:
+                    stmt = stmt.where(InvestorSegmentFlow.week_ending >= start_date.date())
+                if end_date:
+                    stmt = stmt.where(InvestorSegmentFlow.week_ending <= end_date.date())
+
+                stmt = stmt.order_by(InvestorSegmentFlow.week_ending.desc()).limit(limit * 5)  # Account for multiple segments
+
+                result = await session.execute(stmt)
+                flows = result.scalars().all()
+
+                # Group by segment
+                segments = {}
+                for f in flows:
+                    if f.segment not in segments:
+                        segments[f.segment] = []
+
+                    segments[f.segment].append({
+                        'week_ending': f.week_ending.isoformat(),
+                        'ticker': f.ticker,
+                        'segment': f.segment,
+                        'estimated_flow': float(f.estimated_flow) if f.estimated_flow else None,
+                        'confidence_score': float(f.confidence_score) if f.confidence_score else None,
+                        'data_source': f.data_source,
+                        'notes': f.notes
+                    })
+
+                return segments
+
+        except Exception as e:
+            logger.error(f"Error retrieving investor segment flows for {ticker}: {e}")
+            return {}
+
+    async def get_signals(
+        self,
+        ticker: str | None = None,
+        signal_type: str | None = None,
+        status: str = 'ACTIVE',
+        limit: int = 50
+    ) -> List[dict]:
+        """
+        Retrieve signals with optional filters
+
+        Args:
+            ticker: Optional ticker filter
+            signal_type: Optional signal type filter
+            status: Signal status (ACTIVE, EXPIRED, CLOSED)
+            limit: Maximum number of records
+
+        Returns:
+            List of signal records
+        """
+        try:
+            async with AsyncSessionLocal() as session:
+                stmt = select(Signal)
+
+                if ticker:
+                    stmt = stmt.where(Signal.ticker == ticker)
+                if signal_type:
+                    stmt = stmt.where(Signal.signal_type == signal_type)
+                if status:
+                    stmt = stmt.where(Signal.status == status)
+
+                stmt = stmt.order_by(Signal.generated_at.desc()).limit(limit)
+
+                result = await session.execute(stmt)
+                signals = result.scalars().all()
+
+                return [
+                    {
+                        'id': s.id,
+                        'generated_at': s.generated_at.isoformat(),
+                        'ticker': s.ticker,
+                        'signal_type': s.signal_type,
+                        'direction': s.direction,
+                        'strength': float(s.strength) if s.strength else None,
+                        'trigger_values': s.trigger_values,
+                        'status': s.status,
+                        'expires_at': s.expires_at.isoformat() if s.expires_at else None,
+                        'closed_at': s.closed_at.isoformat() if s.closed_at else None,
+                        'notes': s.notes
+                    }
+                    for s in signals
+                ]
+
+        except Exception as e:
+            logger.error(f"Error retrieving signals: {e}")
+            return []
+
+    async def save_signal(self, signal_data: dict) -> int:
+        """
+        Save a new signal to the database
+
+        Args:
+            signal_data: Signal dictionary with required fields
+
+        Returns:
+            Signal ID of the inserted record
+        """
+        try:
+            async with AsyncSessionLocal() as session:
+                signal = Signal(**signal_data)
+                session.add(signal)
+                await session.commit()
+                await session.refresh(signal)
+
+                logger.success(f"Saved signal {signal.id} for {signal.ticker}: {signal.signal_type}")
+                return signal.id
+
+        except Exception as e:
+            logger.error(f"Error saving signal: {e}")
+            raise
+
+    async def update_signal_status(
+        self,
+        signal_id: int,
+        status: str,
+        closed_at: datetime | None = None
+    ) -> bool:
+        """
+        Update signal status (for expiration/closing)
+
+        Args:
+            signal_id: Signal ID
+            status: New status (ACTIVE, EXPIRED, CLOSED)
+            closed_at: Optional close timestamp
+
+        Returns:
+            True if successful
+        """
+        try:
+            async with AsyncSessionLocal() as session:
+                stmt = select(Signal).where(Signal.id == signal_id)
+                result = await session.execute(stmt)
+                signal = result.scalar_one_or_none()
+
+                if signal:
+                    signal.status = status
+                    if closed_at:
+                        signal.closed_at = closed_at
+
+                    await session.commit()
+                    logger.success(f"Updated signal {signal_id} status to {status}")
+                    return True
+                else:
+                    logger.warning(f"Signal {signal_id} not found")
+                    return False
+
+        except Exception as e:
+            logger.error(f"Error updating signal status: {e}")
+            return False
 
 
 # Singleton instance

@@ -15,8 +15,17 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/api': {
-        target: 'http://localhost:8000',
+        // Use Docker service name 'backend' when running in Docker Compose
+        // For local development outside Docker, change to 'http://localhost:8000'
+        target: 'http://backend:8000',
         changeOrigin: true,
+        rewrite: (path) => {
+          // Rewrite /api/health to /health, but keep /api/v1/* as is
+          if (path === '/api/health') {
+            return '/health'
+          }
+          return path
+        },
       },
     },
   },

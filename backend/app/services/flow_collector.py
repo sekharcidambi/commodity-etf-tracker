@@ -6,6 +6,7 @@ from loguru import logger
 
 from app.services.etfdb_scraper import etfdb_scraper
 from app.services.sec_scraper import sec_scraper
+from app.services.yfinance_institutional import yfinance_institutional
 from app.services.data_storage import data_storage
 from app.core.config import settings
 
@@ -76,59 +77,34 @@ class FlowCollector:
         institutions: Dict[str, str] = None
     ) -> Dict:
         """
-        Collect institutional holdings from SEC 13F filings
+        Collect institutional holdings using yfinance
 
         Args:
             ticker: Ticker symbol
-            institutions: Optional dict of institution_name -> CIK
-                         If None, uses major institutions
+            institutions: Not used (kept for compatibility)
 
         Returns:
             Collection statistics
         """
-        logger.info(f"Collecting 13F holdings for {ticker}")
+        logger.info(f"Collecting institutional holdings for {ticker} using yfinance")
 
-        if institutions is None:
-            # Use major institutions
-            holdings_data = await self.sec.fetch_major_institutions(ticker)
-        else:
-            holdings_data = {}
-            for name, cik in institutions.items():
-                data = await self.sec.fetch_13f_holdings(cik, ticker)
-                if data:
-                    holdings_data[name] = data
+        # Fetch holdings using yfinance
+        holdings_records = yfinance_institutional.fetch_institutional_holders(ticker)
 
-        if not holdings_data:
-            logger.warning(f"No 13F holdings found for {ticker}")
+        if not holdings_records:
+            logger.warning(f"No institutional holdings found for {ticker}")
             return {'status': 'no_data', 'institutions_processed': 0, 'records_saved': 0}
 
-        # Transform to database format
-        holdings_records = []
-        for inst_name, data in holdings_data.items():
-            for filing in data.get('holdings', []):
-                record = {
-                    'filing_date': datetime.strptime(filing['filing_date'], '%Y-%m-%d').date(),
-                    'cik': data['cik'],
-                    'institution_name': data['institution_name'],
-                    'ticker': ticker,
-                    'shares_held': None,  # Would parse from InfoTable.xml
-                    'market_value': None,
-                    'weight_pct': None
-                }
-                holdings_records.append(record)
+        # Save to database
+        saved_count = await self.storage.save_institutional_holdings(holdings_records)
 
-        if holdings_records:
-            saved_count = await self.storage.save_institutional_holdings(holdings_records)
-        else:
-            saved_count = 0
-
-        logger.success(f"Collected 13F holdings: {len(holdings_data)} institutions, {saved_count} records saved")
+        logger.success(f"Collected institutional holdings: {len(holdings_records)} institutions, {saved_count} records saved")
 
         return {
             'status': 'success',
-            'source': 'SEC EDGAR 13F',
+            'source': 'Yahoo Finance',
             'ticker': ticker,
-            'institutions_processed': len(holdings_data),
+            'institutions_processed': len(holdings_records),
             'records_saved': saved_count
         }
 

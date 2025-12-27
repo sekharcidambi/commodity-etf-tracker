@@ -1,0 +1,40 @@
+name: Daily Data Collection
+
+on:
+  schedule:
+    # Run daily at 2 AM UTC (after market close)
+    - cron: '0 2 * * *'
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  collect-market-data:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Trigger Price Data Collection
+        run: |
+          echo "Collecting price data for AGQ..."
+          curl -X POST "${{ secrets.BACKEND_URL }}/api/v1/data/collect/etf/AGQ?period=5d"
+
+          echo "Collecting price data for UGL..."
+          curl -X POST "${{ secrets.BACKEND_URL }}/api/v1/data/collect/etf/UGL?period=5d"
+
+          echo "Collecting price data for GDXU..."
+          curl -X POST "${{ secrets.BACKEND_URL }}/api/v1/data/collect/etf/GDXU?period=5d"
+
+      - name: Wait for data processing
+        run: sleep 30
+
+      - name: Regenerate Flows and Signals
+        run: |
+          echo "Regenerating estimated flows..."
+          curl -X POST "${{ secrets.BACKEND_URL }}/api/v1/flows/estimate-all"
+
+          echo "Regenerating trading signals..."
+          curl -X POST "${{ secrets.BACKEND_URL }}/api/v1/signals/generate-all"
+
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "Data collection failed! Check logs."
+          # Add notification service here (email, Slack, Discord, etc.)
