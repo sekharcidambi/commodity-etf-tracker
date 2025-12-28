@@ -593,6 +593,59 @@ class DataStorageService:
             logger.error(f"Error updating signal status: {e}")
             return False
 
+    async def get_commodity_price_data(
+        self,
+        symbol: str,
+        start_date: datetime | None = None,
+        end_date: datetime | None = None,
+        limit: int = 100
+    ) -> List[dict]:
+        """
+        Retrieve commodity price data from database
+
+        Args:
+            symbol: Commodity symbol (e.g., 'GC=F', 'SI=F')
+            start_date: Optional start date
+            end_date: Optional end date
+            limit: Maximum number of records
+
+        Returns:
+            List of commodity price records
+        """
+        try:
+            async with AsyncSessionLocal() as session:
+                stmt = select(CommodityPrice).where(CommodityPrice.symbol == symbol)
+
+                if start_date:
+                    stmt = stmt.where(CommodityPrice.timestamp >= start_date)
+                if end_date:
+                    stmt = stmt.where(CommodityPrice.timestamp <= end_date)
+
+                stmt = stmt.order_by(CommodityPrice.timestamp.desc()).limit(limit)
+
+                result = await session.execute(stmt)
+                prices = result.scalars().all()
+
+                # Convert to dict
+                return [
+                    {
+                        'timestamp': p.timestamp.isoformat(),
+                        'symbol': p.symbol,
+                        'instrument_type': p.instrument_type,
+                        'open': float(p.open) if p.open else None,
+                        'high': float(p.high) if p.high else None,
+                        'low': float(p.low) if p.low else None,
+                        'close': float(p.close) if p.close else None,
+                        'volume': int(p.volume) if p.volume else None,
+                        'open_interest': int(p.open_interest) if p.open_interest else None
+                    }
+                    for p in prices
+                ]
+
+        except Exception as e:
+            logger.error(f"Error retrieving commodity price data for {symbol}: {e}")
+            return []
+
 
 # Singleton instance
 data_storage = DataStorageService()

@@ -7,6 +7,7 @@ from loguru import logger
 
 from app.services.data_storage import DataStorageService
 from app.services.flow_statistics import FlowStatisticsService
+from app.services.premium_discount_calculator import premium_discount_calculator
 
 
 class SignalGeneratorService:
@@ -24,7 +25,15 @@ class SignalGeneratorService:
             "MOMENTUM_ALIGNMENT": 7,  # 1 week
             "SMART_MONEY_DIVERGENCE": 14,  # 2 weeks
             "KOREAN_RETAIL_EUPHORIA": 7,  # 1 week
-            "INSTITUTIONAL_ACCUMULATION": 90  # 3 months (longer-term signal)
+            "INSTITUTIONAL_ACCUMULATION": 90,  # 3 months (longer-term signal)
+            "PREMIUM_DISCOUNT_EXTREME": 7,  # 1 week
+        }
+
+        # Commodity symbol mapping for futures-spot basis
+        self.COMMODITY_MAPPING = {
+            "AGQ": {"spot_symbol": "XAG", "futures_symbol": "SI=F", "commodity": "silver"},
+            "UGL": {"spot_symbol": "XAU", "futures_symbol": "GC=F", "commodity": "gold"},
+            "ZSL": {"spot_symbol": "XAG", "futures_symbol": "SI=F", "commodity": "silver"},
         }
 
     async def generate_signals(self, ticker: str) -> List[Dict[str, Any]]:
@@ -44,10 +53,12 @@ class SignalGeneratorService:
             signal_checks = [
                 self.check_extreme_flow(ticker),
                 self.check_flow_price_divergence(ticker),
+                self.check_futures_spot_basis(ticker),
                 self.check_momentum_alignment(ticker),
                 self.check_smart_money_divergence(ticker),
                 self.check_korean_retail_euphoria(ticker),
                 self.check_institutional_accumulation(ticker),
+                self.check_premium_discount_extreme(ticker),
             ]
 
             # Execute all checks
@@ -446,6 +457,150 @@ class SignalGeneratorService:
 
         except Exception as e:
             logger.error(f"Error checking institutional accumulation for {ticker}: {e}")
+            return None
+
+    async def check_futures_spot_basis(self, ticker: str) -> Optional[Dict[str, Any]]:
+        """
+        Signal Type 3: FUTURES_SPOT_BASIS
+        Trigger: Basis spread indicates contango/backwardation extreme
+
+        For leveraged ETFs:
+        - Basis = (Futures - Spot) / Spot * 100
+        - Basis > +2%: Contango extreme → SELL leveraged long (decay risk)
+        - Basis < -1%: Backwardation → BUY leveraged long (favorable roll)
+
+        Leveraged ETFs suffer from contango decay due to daily rebalancing
+        and negative roll yield when futures are in contango.
+        """
+        try:
+            if ticker not in self.COMMODITY_MAPPING:
+                return None
+
+            mapping = self.COMMODITY_MAPPING[ticker]
+            futures_symbol = mapping["futures_symbol"]
+
+            # Get futures price
+            futures_prices = await self.data_storage.get_commodity_price_data(
+                futures_symbol, limit=1
+            )
+
+            if not futures_prices:
+                logger.debug(f"No futures data for {futures_symbol}")
+                return None
+
+            futures_price = float(futures_prices[0]['close'])
+
+            # Get ETF price as spot proxy (SLV/GLD would be better but this works)
+            etf_prices = await self.data_storage.get_price_data(ticker, limit=1)
+
+            if not etf_prices:
+                return None
+
+            etf_price = float(etf_prices[0]['close'])
+
+            # For 2x ETFs, estimate the underlying spot from ETF price
+            # This is a simplified calculation - proper NAV would be better
+            leverage = 2.0 if ticker != "ZSL" else -2.0
+            estimated_spot = etf_price / abs(leverage)
+
+            # Calculate basis (futures premium/discount to spot)
+            basis_pct = (futures_price - estimated_spot) / estimated_spot * 100
+
+            # Detect extreme basis
+            # Contango (futures > spot): Negative for leveraged longs due to roll cost
+            # Backwardation (futures < spot): Positive for leveraged longs
+
+            if basis_pct > 2.0:  # Extreme contango
+                direction = "SELL" if ticker != "ZSL" else "BUY"
+                strength = min((basis_pct - 2.0) / 3.0, 1.0)
+
+                return self._create_signal(
+                    ticker=ticker,
+                    signal_type="FUTURES_SPOT_BASIS",
+                    direction=direction,
+                    strength=strength,
+                    trigger_values={
+                        "basis_pct": float(basis_pct),
+                        "futures_price": futures_price,
+                        "estimated_spot": float(estimated_spot),
+                        "market_structure": "contango",
+                        "threshold": 2.0
+                    },
+                    notes=f"Extreme contango ({basis_pct:.2f}%) - unfavorable for leveraged long ETFs"
+                )
+
+            elif basis_pct < -1.0:  # Backwardation
+                direction = "BUY" if ticker != "ZSL" else "SELL"
+                strength = min((abs(basis_pct) - 1.0) / 2.0, 1.0)
+
+                return self._create_signal(
+                    ticker=ticker,
+                    signal_type="FUTURES_SPOT_BASIS",
+                    direction=direction,
+                    strength=strength,
+                    trigger_values={
+                        "basis_pct": float(basis_pct),
+                        "futures_price": futures_price,
+                        "estimated_spot": float(estimated_spot),
+                        "market_structure": "backwardation",
+                        "threshold": -1.0
+                    },
+                    notes=f"Backwardation ({basis_pct:.2f}%) - favorable for leveraged long ETFs"
+                )
+
+            return None
+
+        except Exception as e:
+            logger.error(f"Error checking futures-spot basis for {ticker}: {e}")
+            return None
+
+    async def check_premium_discount_extreme(self, ticker: str) -> Optional[Dict[str, Any]]:
+        """
+        Signal Type 8: PREMIUM_DISCOUNT_EXTREME
+        Trigger: ETF trading at significant premium or discount to NAV
+
+        Uses the premium_discount_calculator to detect:
+        - Premium > +1.5%: SELL (overpriced relative to NAV)
+        - Discount < -1.5%: BUY (underpriced relative to NAV)
+
+        Large premiums/discounts often revert to fair value.
+        """
+        try:
+            # Use the premium_discount_calculator service
+            extreme = await premium_discount_calculator.detect_premium_discount_extreme(
+                ticker, threshold=1.5
+            )
+
+            if not extreme:
+                return None
+
+            # Determine direction based on premium/discount
+            if extreme['direction'] == "PREMIUM":
+                direction = "SELL"
+            else:  # DISCOUNT
+                direction = "BUY"
+
+            strength = min(abs(extreme['z_score']) / 3.0, 1.0)
+
+            return self._create_signal(
+                ticker=ticker,
+                signal_type="PREMIUM_DISCOUNT_EXTREME",
+                direction=direction,
+                strength=strength,
+                trigger_values={
+                    "premium_discount_pct": extreme['current_premium_discount_pct'],
+                    "z_score": extreme['z_score'],
+                    "percentile": extreme['percentile'],
+                    "etf_price": extreme['etf_price'],
+                    "estimated_nav": extreme['estimated_nav'],
+                    "direction": extreme['direction'],
+                    "severity": extreme['severity']
+                },
+                notes=extreme['notes']
+            )
+
+        except Exception as e:
+            logger.error(f"Error checking premium/discount extreme for {ticker}: {e}")
             return None
 
     def _create_signal(
