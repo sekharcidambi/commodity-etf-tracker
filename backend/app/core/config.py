@@ -40,6 +40,8 @@ class Settings(BaseSettings):
     POLYGON_API_KEY: str = Field(default="", env="POLYGON_API_KEY")
     ALPHA_VANTAGE_API_KEY: str = Field(default="", env="ALPHA_VANTAGE_API_KEY")
     FRED_API_KEY: str = Field(default="", env="FRED_API_KEY")
+    REDDIT_CLIENT_ID: str = Field(default="", env="REDDIT_CLIENT_ID")
+    REDDIT_CLIENT_SECRET: str = Field(default="", env="REDDIT_CLIENT_SECRET")
 
     # Data Collection
     ENABLE_SCHEDULER: bool = Field(default=True, env="ENABLE_SCHEDULER")

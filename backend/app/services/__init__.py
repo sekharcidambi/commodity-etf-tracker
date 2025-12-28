@@ -8,6 +8,8 @@ from app.services.sec_scraper import sec_scraper
 from app.services.flow_collector import flow_collector
 from app.services.premium_discount_calculator import premium_discount_calculator
 from app.services.fred_collector import fred_collector
+from app.services.cot_collector import cot_collector
+from app.services.reddit_sentiment_collector import reddit_sentiment_collector
 from app.services.asian_hours_analyzer import AsianHoursAnalyzerService
 from app.services.flow_statistics import FlowStatisticsService
 from app.services.signal_generator import SignalGeneratorService
@@ -21,6 +23,8 @@ __all__ = [
     "flow_collector",
     "premium_discount_calculator",
     "fred_collector",
+    "cot_collector",
+    "reddit_sentiment_collector",
     "AsianHoursAnalyzerService",
     "FlowStatisticsService",
     "SignalGeneratorService",

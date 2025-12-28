@@ -8,6 +8,8 @@ from loguru import logger
 from app.services.data_storage import DataStorageService
 from app.services.flow_statistics import FlowStatisticsService
 from app.services.premium_discount_calculator import premium_discount_calculator
+from app.services.cot_collector import cot_collector
+from app.services.google_trends_collector import google_trends_collector
 
 
 class SignalGeneratorService:
@@ -27,6 +29,8 @@ class SignalGeneratorService:
             "KOREAN_RETAIL_EUPHORIA": 7,  # 1 week
             "INSTITUTIONAL_ACCUMULATION": 90,  # 3 months (longer-term signal)
             "PREMIUM_DISCOUNT_EXTREME": 7,  # 1 week
+            "COT_EXTREME_POSITIONING": 14,  # 2 weeks (weekly data)
+            "RETAIL_SENTIMENT_SPIKE": 3,  # 3 days (fast moving)
         }
 
         # Commodity symbol mapping for futures-spot basis
@@ -59,6 +63,8 @@ class SignalGeneratorService:
                 self.check_korean_retail_euphoria(ticker),
                 self.check_institutional_accumulation(ticker),
                 self.check_premium_discount_extreme(ticker),
+                self.check_cot_extreme_positioning(ticker),
+                self.check_retail_sentiment_spike(ticker),
             ]
 
             # Execute all checks
@@ -601,6 +607,164 @@ class SignalGeneratorService:
 
         except Exception as e:
             logger.error(f"Error checking premium/discount extreme for {ticker}: {e}")
+            return None
+
+    async def check_cot_extreme_positioning(self, ticker: str) -> Optional[Dict[str, Any]]:
+        """
+        Signal Type 9: COT_EXTREME_POSITIONING
+        Trigger: Speculator positioning at extreme levels (contrarian indicator)
+
+        Uses CFTC Commitment of Traders data:
+        - Managed Money (large speculators) at extreme bullish → SELL signal
+        - Managed Money at extreme bearish → BUY signal
+
+        This is a powerful contrarian indicator because speculators tend to
+        be wrong at extremes.
+        """
+        try:
+            if ticker not in self.COMMODITY_MAPPING:
+                return None
+
+            commodity = self.COMMODITY_MAPPING[ticker]["commodity"]
+
+            # Get extreme positioning analysis from COT collector
+            extreme_data = await cot_collector.detect_extreme_positioning(
+                commodity=commodity,
+                lookback_weeks=52,
+                percentile_threshold=90.0
+            )
+
+            if not extreme_data:
+                return None
+
+            extreme_pos = extreme_data.get('extreme_positioning', {})
+
+            # Check for extreme bullish positioning (contrarian SELL)
+            if extreme_pos.get('is_extreme_bullish'):
+                direction = "SELL" if ticker != "ZSL" else "BUY"  # Inverse for ZSL
+                z_score = abs(extreme_data.get('statistics', {}).get('z_score', 0))
+                strength = min(z_score / 3.0, 1.0)
+
+                return self._create_signal(
+                    ticker=ticker,
+                    signal_type="COT_EXTREME_POSITIONING",
+                    direction=direction,
+                    strength=strength,
+                    trigger_values={
+                        "commodity": commodity,
+                        "managed_money_net": extreme_data.get('current_positioning', {}).get('managed_money_net'),
+                        "managed_money_net_pct": extreme_data.get('current_positioning', {}).get('managed_money_net_pct'),
+                        "percentile": extreme_data.get('statistics', {}).get('percentile'),
+                        "z_score": extreme_data.get('statistics', {}).get('z_score'),
+                        "positioning_type": "extreme_bullish",
+                        "signal_type": "contrarian_sell"
+                    },
+                    notes=f"COT: Extreme bullish positioning in {commodity} (contrarian sell) - {extreme_data.get('interpretation', '')}"
+                )
+
+            # Check for extreme bearish positioning (contrarian BUY)
+            elif extreme_pos.get('is_extreme_bearish'):
+                direction = "BUY" if ticker != "ZSL" else "SELL"  # Inverse for ZSL
+                z_score = abs(extreme_data.get('statistics', {}).get('z_score', 0))
+                strength = min(z_score / 3.0, 1.0)
+
+                return self._create_signal(
+                    ticker=ticker,
+                    signal_type="COT_EXTREME_POSITIONING",
+                    direction=direction,
+                    strength=strength,
+                    trigger_values={
+                        "commodity": commodity,
+                        "managed_money_net": extreme_data.get('current_positioning', {}).get('managed_money_net'),
+                        "managed_money_net_pct": extreme_data.get('current_positioning', {}).get('managed_money_net_pct'),
+                        "percentile": extreme_data.get('statistics', {}).get('percentile'),
+                        "z_score": extreme_data.get('statistics', {}).get('z_score'),
+                        "positioning_type": "extreme_bearish",
+                        "signal_type": "contrarian_buy"
+                    },
+                    notes=f"COT: Extreme bearish positioning in {commodity} (contrarian buy) - {extreme_data.get('interpretation', '')}"
+                )
+
+            return None
+
+        except Exception as e:
+            logger.error(f"Error checking COT extreme positioning for {ticker}: {e}")
+            return None
+
+    async def check_retail_sentiment_spike(self, ticker: str) -> Optional[Dict[str, Any]]:
+        """
+        Signal Type 10: RETAIL_SENTIMENT_SPIKE
+        Trigger: Unusual spike in retail interest (Google Trends + Reddit)
+
+        Combines multiple retail sentiment indicators:
+        - Google Trends search interest spike (>2x normal)
+        - High sentiment combined with high volume = potential exhaustion
+
+        Often a contrarian indicator when combined with extreme readings.
+        """
+        try:
+            if ticker not in self.COMMODITY_MAPPING:
+                return None
+
+            commodity = self.COMMODITY_MAPPING[ticker]["commodity"]
+
+            # Check Google Trends for interest spike
+            try:
+                spike_data = await google_trends_collector.detect_interest_spike(
+                    commodity=commodity,
+                    timeframe="now 7-d",
+                    threshold_multiplier=2.0
+                )
+            except Exception as e:
+                logger.debug(f"Google Trends check failed for {commodity}: {e}")
+                spike_data = None
+
+            if not spike_data or not spike_data.get('is_spike'):
+                return None
+
+            # Get interest score for more context
+            interest_score = await google_trends_collector.calculate_interest_score(
+                commodity=commodity,
+                timeframe="now 7-d"
+            )
+
+            z_score = spike_data.get('z_score', 0)
+            current_interest = spike_data.get('current_interest', 0)
+            avg_interest = spike_data.get('average_interest', 1)
+
+            # Determine signal direction
+            # High retail interest spike is often a contrarian indicator
+            # But we provide it as a WATCH signal for awareness
+            if z_score > 2.5:
+                # Extreme spike - likely contrarian sell
+                direction = "SELL" if ticker != "ZSL" else "BUY"
+                strength = min((z_score - 2.0) / 2.0, 1.0)
+                signal_interpretation = "extreme_interest_contrarian"
+            else:
+                # Moderate spike - watch signal
+                direction = "WATCH"
+                strength = min(z_score / 3.0, 0.7)
+                signal_interpretation = "elevated_interest_watch"
+
+            return self._create_signal(
+                ticker=ticker,
+                signal_type="RETAIL_SENTIMENT_SPIKE",
+                direction=direction,
+                strength=strength,
+                trigger_values={
+                    "commodity": commodity,
+                    "current_interest": current_interest,
+                    "average_interest": avg_interest,
+                    "interest_ratio": round(current_interest / max(avg_interest, 1), 2),
+                    "z_score": round(z_score, 2),
+                    "normalized_score": interest_score.get('normalized_score'),
+                    "signal_interpretation": signal_interpretation
+                },
+                notes=f"Retail interest spike in {commodity}: {current_interest:.0f} vs avg {avg_interest:.0f} (z={z_score:.1f})"
+            )
+
+        except Exception as e:
+            logger.error(f"Error checking retail sentiment spike for {ticker}: {e}")
             return None
 
     def _create_signal(
