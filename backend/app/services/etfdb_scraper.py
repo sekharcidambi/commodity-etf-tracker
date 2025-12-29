@@ -133,14 +133,14 @@ class ETFdbScraper:
             else:
                 # Try to parse as is
                 return float(text)
-        except:
+        except (ValueError, AttributeError, TypeError):
             return None
 
     def _parse_number(self, text: str) -> int | None:
         """Parse number from text (e.g., '1,234,567' -> 1234567)"""
         try:
             return int(text.replace(',', '').strip())
-        except:
+        except (ValueError, AttributeError, TypeError):
             return None
 
     def _parse_percentage(self, text: str) -> float | None:
@@ -148,7 +148,7 @@ class ETFdbScraper:
         try:
             text = text.replace('%', '').strip()
             return float(text) / 100
-        except:
+        except (ValueError, AttributeError, TypeError):
             return None
 
     async def fetch_multiple_tickers(self, tickers: list[str]) -> Dict[str, Dict]:

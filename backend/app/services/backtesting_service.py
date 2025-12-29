@@ -604,6 +604,10 @@ class BacktestingService:
         if holding_period.empty:
             return None
 
+        # Default stop loss and take profit percentages (can be made configurable)
+        stop_loss_pct = 5.0  # 5% stop loss
+        take_profit_pct = 10.0  # 10% take profit
+
         # Check each day for exit conditions
         for idx, row in holding_period.iterrows():
             timestamp = row['timestamp']
@@ -613,15 +617,43 @@ class BacktestingService:
 
             # For BUY signals
             if direction == 'BUY':
-                # Check stop loss (if low goes below entry)
-                # Check take profit (if high exceeds target)
-                # For simplicity, exit at close price
-                pass
+                # Check stop loss - if low goes below entry by stop_loss_pct
+                stop_loss_price = entry_price * (1 - stop_loss_pct / 100)
+                if low <= stop_loss_price:
+                    return {
+                        'exit_price': stop_loss_price,
+                        'exit_timestamp': timestamp,
+                        'exit_reason': 'STOP_LOSS'
+                    }
 
-            # For SELL signals
+                # Check take profit - if high exceeds target by take_profit_pct
+                take_profit_price = entry_price * (1 + take_profit_pct / 100)
+                if high >= take_profit_price:
+                    return {
+                        'exit_price': take_profit_price,
+                        'exit_timestamp': timestamp,
+                        'exit_reason': 'TAKE_PROFIT'
+                    }
+
+            # For SELL signals (short positions)
             elif direction == 'SELL':
-                # Similar logic but inverted
-                pass
+                # Check stop loss - if high goes above entry by stop_loss_pct
+                stop_loss_price = entry_price * (1 + stop_loss_pct / 100)
+                if high >= stop_loss_price:
+                    return {
+                        'exit_price': stop_loss_price,
+                        'exit_timestamp': timestamp,
+                        'exit_reason': 'STOP_LOSS'
+                    }
+
+                # Check take profit - if low drops below entry by take_profit_pct
+                take_profit_price = entry_price * (1 - take_profit_pct / 100)
+                if low <= take_profit_price:
+                    return {
+                        'exit_price': take_profit_price,
+                        'exit_timestamp': timestamp,
+                        'exit_reason': 'TAKE_PROFIT'
+                    }
 
         # If we get here, exit at end of holding period (expired)
         last_row = holding_period.iloc[-1]

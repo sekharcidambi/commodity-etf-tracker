@@ -837,8 +837,8 @@ class CompositeSignalScorer:
                         freshness_scores.append(1)  # Recent
                     else:
                         freshness_scores.append(0)  # Stale
-                except:
-                    pass
+                except (ValueError, TypeError, AttributeError):
+                    pass  # Skip invalid timestamps
 
         if not freshness_scores:
             return 'unknown'

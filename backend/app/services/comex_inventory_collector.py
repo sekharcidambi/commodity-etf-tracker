@@ -154,8 +154,8 @@ class COMEXInventoryCollector:
                         inventory_date = datetime.strptime(date_str, '%m/%d/%Y').date()
                     else:
                         inventory_date = datetime.strptime(date_str, '%Y-%m-%d').date()
-                except:
-                    pass
+                except (ValueError, TypeError):
+                    pass  # Keep default date if parsing fails
 
             # Try to find registered and eligible inventory
             # Pattern: Look for "Registered" followed by a number
