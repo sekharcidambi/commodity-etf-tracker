@@ -40,6 +40,8 @@ class Settings(BaseSettings):
     POLYGON_API_KEY: str = Field(default="", env="POLYGON_API_KEY")
     ALPHA_VANTAGE_API_KEY: str = Field(default="", env="ALPHA_VANTAGE_API_KEY")
     FRED_API_KEY: str = Field(default="", env="FRED_API_KEY")
+    REDDIT_CLIENT_ID: str = Field(default="", env="REDDIT_CLIENT_ID")
+    REDDIT_CLIENT_SECRET: str = Field(default="", env="REDDIT_CLIENT_SECRET")
 
     # Data Collection
     ENABLE_SCHEDULER: bool = Field(default=True, env="ENABLE_SCHEDULER")
@@ -71,6 +73,19 @@ class Settings(BaseSettings):
 
     # Logging
     LOG_LEVEL: str = Field(default="INFO", env="LOG_LEVEL")
+
+    # Alert System
+    SMTP_HOST: str = Field(default="smtp.gmail.com", env="SMTP_HOST")
+    SMTP_PORT: int = Field(default=587, env="SMTP_PORT")
+    SMTP_USER: str = Field(default="", env="SMTP_USER")
+    SMTP_PASSWORD: str = Field(default="", env="SMTP_PASSWORD")
+    SMTP_FROM_EMAIL: str = Field(default="alerts@commodity-tracker.com", env="SMTP_FROM_EMAIL")
+    SMTP_FROM_NAME: str = Field(default="Commodity ETF Tracker", env="SMTP_FROM_NAME")
+
+    SLACK_WEBHOOK_URL: str = Field(default="", env="SLACK_WEBHOOK_URL")
+
+    ALERT_COOLDOWN_MINUTES: int = Field(default=60, env="ALERT_COOLDOWN_MINUTES")
+    ALERT_EXTREME_COOLDOWN_MINUTES: int = Field(default=1440, env="ALERT_EXTREME_COOLDOWN_MINUTES")  # 24 hours
 
     class Config:
         env_file = ".env"

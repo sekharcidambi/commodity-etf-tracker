@@ -4,6 +4,7 @@ from fastapi import APIRouter, Query, HTTPException
 from typing import Optional
 from datetime import date, datetime
 from pydantic import BaseModel
+from loguru import logger
 
 from app.services.data_storage import data_storage
 from app.services.flow_collector import flow_collector

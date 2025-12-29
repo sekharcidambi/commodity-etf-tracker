@@ -33,6 +33,7 @@ apscheduler==3.10.4
 
 # Financial data APIs
 yfinance==0.2.35
+pytrends==4.9.2
 
 # Environment variables
 python-dotenv==1.0.0

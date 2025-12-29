@@ -1,0 +1,9 @@
+# Requirements for WebSocket client examples
+# Install with: pip install -r requirements.txt
+
+# WebSocket client library (for Python examples)
+websockets==12.0
+
+# Additional utilities
+loguru==0.7.2
+python-dateutil==2.8.2
