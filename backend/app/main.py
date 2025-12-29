@@ -7,6 +7,8 @@ from loguru import logger
 
 from app.core.config import settings
 from app.api import api_router
+from app.services.scheduler_service import scheduler_service
+from app.services.websocket_manager import websocket_manager
 
 # Configure logger
 logger.add(
@@ -69,11 +71,38 @@ async def startup_event():
     logger.info(f"Environment: {settings.ENVIRONMENT}")
     logger.info(f"Database: {settings.DATABASE_URL}")
 
+    # Start the scheduler if enabled
+    if settings.ENABLE_SCHEDULER:
+        try:
+            scheduler_service.start_scheduler()
+            logger.success("✅ Scheduler started successfully")
+        except Exception as e:
+            logger.error(f"❌ Failed to start scheduler: {e}")
+    else:
+        logger.info("📅 Scheduler is disabled (ENABLE_SCHEDULER=False)")
+
+    logger.success("🎯 Commodity ETF Tracker API is ready!")
+
 
 @app.on_event("shutdown")
 async def shutdown_event():
     """Execute on application shutdown"""
     logger.info("👋 Shutting down Commodity ETF Tracker API...")
+
+    # Stop the scheduler gracefully
+    if settings.ENABLE_SCHEDULER:
+        try:
+            scheduler_service.stop_scheduler(wait=True)
+            logger.info("✅ Scheduler stopped gracefully")
+        except Exception as e:
+            logger.error(f"❌ Error stopping scheduler: {e}")
+
+    # Disconnect all WebSocket clients
+    try:
+        await websocket_manager.disconnect_all()
+        logger.info("✅ WebSocket connections closed")
+    except Exception as e:
+        logger.error(f"❌ Error closing WebSocket connections: {e}")
 
 
 if __name__ == "__main__":

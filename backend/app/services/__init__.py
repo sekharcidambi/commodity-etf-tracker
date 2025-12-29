@@ -16,6 +16,7 @@ from app.services.signal_generator import SignalGeneratorService
 from app.services.composite_signal_scorer import composite_signal_scorer
 from app.services.websocket_manager import websocket_manager
 from app.services.scheduler_service import scheduler_service
+from app.services.backtesting_service import backtesting_service
 
 __all__ = [
     "yfinance_collector",
@@ -34,4 +35,5 @@ __all__ = [
     "composite_signal_scorer",
     "websocket_manager",
     "scheduler_service",
+    "backtesting_service",
 ]

@@ -7,6 +7,7 @@ from app.models.institutional import InstitutionalHolding
 from app.models.signal import Signal
 from app.models.alert import AlertLog
 from app.models.data_jobs import DataJob
+from app.models.backtest import BacktestRun, SignalPerformance
 
 __all__ = [
     "Ticker",
@@ -19,4 +20,6 @@ __all__ = [
     "Signal",
     "AlertLog",
     "DataJob",
+    "BacktestRun",
+    "SignalPerformance",
 ]

@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter
 
-from app.api import prices, flows, signals, analytics, tickers, data_collection, alternative_data, websocket
+from app.api import prices, flows, signals, analytics, tickers, data_collection, alternative_data, websocket, scheduler, backtesting
 
 api_router = APIRouter()
 
@@ -51,4 +51,16 @@ api_router.include_router(
 api_router.include_router(
     websocket.router,
     tags=["WebSocket"]
+)
+
+api_router.include_router(
+    scheduler.router,
+    prefix="/scheduler",
+    tags=["Scheduler"]
+)
+
+api_router.include_router(
+    backtesting.router,
+    prefix="/backtesting",
+    tags=["Backtesting"]
 )
