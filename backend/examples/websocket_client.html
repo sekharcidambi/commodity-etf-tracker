@@ -1,0 +1,534 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Commodity ETF Tracker - WebSocket Client</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 20px;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            overflow: hidden;
+        }
+
+        .header {
+            background: #2d3748;
+            color: white;
+            padding: 20px 30px;
+        }
+
+        .header h1 {
+            font-size: 24px;
+            margin-bottom: 5px;
+        }
+
+        .header p {
+            color: #a0aec0;
+            font-size: 14px;
+        }
+
+        .controls {
+            padding: 20px 30px;
+            background: #f7fafc;
+            border-bottom: 1px solid #e2e8f0;
+        }
+
+        .control-group {
+            margin-bottom: 15px;
+        }
+
+        .control-group:last-child {
+            margin-bottom: 0;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 600;
+            color: #2d3748;
+            font-size: 14px;
+        }
+
+        select, input {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #e2e8f0;
+            border-radius: 5px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+
+        select:focus, input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        button {
+            flex: 1;
+            padding: 12px;
+            border: none;
+            border-radius: 5px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .btn-connect {
+            background: #48bb78;
+            color: white;
+        }
+
+        .btn-connect:hover {
+            background: #38a169;
+        }
+
+        .btn-connect:disabled {
+            background: #cbd5e0;
+            cursor: not-allowed;
+        }
+
+        .btn-disconnect {
+            background: #f56565;
+            color: white;
+        }
+
+        .btn-disconnect:hover {
+            background: #e53e3e;
+        }
+
+        .btn-disconnect:disabled {
+            background: #cbd5e0;
+            cursor: not-allowed;
+        }
+
+        .btn-clear {
+            background: #718096;
+            color: white;
+        }
+
+        .btn-clear:hover {
+            background: #4a5568;
+        }
+
+        .status {
+            padding: 15px 30px;
+            background: #edf2f7;
+            border-bottom: 1px solid #e2e8f0;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .status-indicator {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #f56565;
+        }
+
+        .status-indicator.connected {
+            background: #48bb78;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .status-text {
+            font-size: 14px;
+            color: #2d3748;
+        }
+
+        .messages {
+            padding: 20px 30px;
+            height: 500px;
+            overflow-y: auto;
+            background: #ffffff;
+        }
+
+        .message {
+            padding: 12px;
+            margin-bottom: 10px;
+            border-radius: 5px;
+            border-left: 4px solid;
+            font-size: 13px;
+            animation: slideIn 0.3s;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .message-connection {
+            background: #bee3f8;
+            border-color: #4299e1;
+        }
+
+        .message-price {
+            background: #c6f6d5;
+            border-color: #48bb78;
+        }
+
+        .message-signal {
+            background: #fed7d7;
+            border-color: #fc8181;
+        }
+
+        .message-flow {
+            background: #feebc8;
+            border-color: #f6ad55;
+        }
+
+        .message-sentiment {
+            background: #e9d8fd;
+            border-color: #9f7aea;
+        }
+
+        .message-info {
+            background: #e6fffa;
+            border-color: #4fd1c5;
+        }
+
+        .message-time {
+            color: #718096;
+            font-size: 11px;
+            margin-bottom: 4px;
+        }
+
+        .message-type {
+            font-weight: 600;
+            color: #2d3748;
+            margin-bottom: 4px;
+        }
+
+        .message-content {
+            color: #4a5568;
+        }
+
+        .no-messages {
+            text-align: center;
+            color: #a0aec0;
+            padding: 40px;
+            font-style: italic;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🚀 Commodity ETF Tracker</h1>
+            <p>WebSocket Real-Time Streaming Client</p>
+        </div>
+
+        <div class="controls">
+            <div class="control-group">
+                <label for="endpoint">Endpoint</label>
+                <select id="endpoint">
+                    <option value="prices">Price Updates (Single Ticker)</option>
+                    <option value="signals">Signal Alerts</option>
+                    <option value="dashboard">Dashboard (All Updates)</option>
+                </select>
+            </div>
+
+            <div class="control-group" id="ticker-group">
+                <label for="ticker">Ticker</label>
+                <input type="text" id="ticker" placeholder="e.g., AGQ, UGL, ZSL" value="AGQ">
+            </div>
+
+            <div class="control-group" id="tickers-group" style="display: none;">
+                <label for="tickers">Tickers (comma-separated, optional)</label>
+                <input type="text" id="tickers" placeholder="e.g., AGQ,UGL,ZSL">
+            </div>
+
+            <div class="control-group">
+                <label for="url">WebSocket URL</label>
+                <input type="text" id="url" value="ws://localhost:8000">
+            </div>
+
+            <div class="button-group">
+                <button id="connectBtn" class="btn-connect">Connect</button>
+                <button id="disconnectBtn" class="btn-disconnect" disabled>Disconnect</button>
+                <button id="clearBtn" class="btn-clear">Clear Messages</button>
+            </div>
+        </div>
+
+        <div class="status">
+            <div class="status-indicator" id="statusIndicator"></div>
+            <span class="status-text" id="statusText">Disconnected</span>
+        </div>
+
+        <div class="messages" id="messages">
+            <div class="no-messages">No messages yet. Click "Connect" to start receiving updates.</div>
+        </div>
+    </div>
+
+    <script>
+        let ws = null;
+        let pingInterval = null;
+
+        const endpoint = document.getElementById('endpoint');
+        const ticker = document.getElementById('ticker');
+        const tickers = document.getElementById('tickers');
+        const url = document.getElementById('url');
+        const connectBtn = document.getElementById('connectBtn');
+        const disconnectBtn = document.getElementById('disconnectBtn');
+        const clearBtn = document.getElementById('clearBtn');
+        const statusIndicator = document.getElementById('statusIndicator');
+        const statusText = document.getElementById('statusText');
+        const messages = document.getElementById('messages');
+        const tickerGroup = document.getElementById('ticker-group');
+        const tickersGroup = document.getElementById('tickers-group');
+
+        // Update UI based on endpoint selection
+        endpoint.addEventListener('change', () => {
+            if (endpoint.value === 'prices') {
+                tickerGroup.style.display = 'block';
+                tickersGroup.style.display = 'none';
+            } else {
+                tickerGroup.style.display = 'none';
+                tickersGroup.style.display = 'block';
+            }
+        });
+
+        // Connect to WebSocket
+        connectBtn.addEventListener('click', () => {
+            const baseUrl = url.value;
+            const endpointType = endpoint.value;
+            let wsUrl;
+
+            if (endpointType === 'prices') {
+                const tickerValue = ticker.value.trim().toUpperCase();
+                if (!tickerValue) {
+                    alert('Please enter a ticker symbol');
+                    return;
+                }
+                wsUrl = `${baseUrl}/api/v1/ws/prices/${tickerValue}`;
+            } else if (endpointType === 'signals') {
+                wsUrl = `${baseUrl}/api/v1/ws/signals`;
+                const tickersValue = tickers.value.trim();
+                if (tickersValue) {
+                    wsUrl += `?tickers=${tickersValue}`;
+                }
+            } else if (endpointType === 'dashboard') {
+                wsUrl = `${baseUrl}/api/v1/ws/dashboard`;
+                const tickersValue = tickers.value.trim();
+                if (tickersValue) {
+                    wsUrl += `?tickers=${tickersValue}`;
+                }
+            }
+
+            connect(wsUrl);
+        });
+
+        // Disconnect from WebSocket
+        disconnectBtn.addEventListener('click', () => {
+            disconnect();
+        });
+
+        // Clear messages
+        clearBtn.addEventListener('click', () => {
+            messages.innerHTML = '<div class="no-messages">Messages cleared.</div>';
+        });
+
+        function connect(wsUrl) {
+            try {
+                ws = new WebSocket(wsUrl);
+
+                ws.onopen = () => {
+                    statusIndicator.classList.add('connected');
+                    statusText.textContent = `Connected to ${wsUrl}`;
+                    connectBtn.disabled = true;
+                    disconnectBtn.disabled = false;
+                    addMessage('connection', 'CONNECTION', { url: wsUrl });
+
+                    // Start ping interval
+                    pingInterval = setInterval(() => {
+                        if (ws && ws.readyState === WebSocket.OPEN) {
+                            ws.send(JSON.stringify({ type: 'PING' }));
+                        }
+                    }, 30000);
+                };
+
+                ws.onmessage = (event) => {
+                    try {
+                        const data = JSON.parse(event.data);
+                        handleMessage(data);
+                    } catch (e) {
+                        console.error('Error parsing message:', e);
+                    }
+                };
+
+                ws.onerror = (error) => {
+                    console.error('WebSocket error:', error);
+                    addMessage('info', 'ERROR', { message: 'Connection error occurred' });
+                };
+
+                ws.onclose = () => {
+                    statusIndicator.classList.remove('connected');
+                    statusText.textContent = 'Disconnected';
+                    connectBtn.disabled = false;
+                    disconnectBtn.disabled = true;
+                    addMessage('info', 'DISCONNECTED', {});
+
+                    if (pingInterval) {
+                        clearInterval(pingInterval);
+                        pingInterval = null;
+                    }
+                };
+
+            } catch (error) {
+                alert('Error connecting: ' + error.message);
+            }
+        }
+
+        function disconnect() {
+            if (ws) {
+                ws.close();
+                ws = null;
+            }
+        }
+
+        function handleMessage(data) {
+            const type = data.type;
+
+            switch(type) {
+                case 'CONNECTION_ESTABLISHED':
+                    addMessage('connection', type, data);
+                    break;
+                case 'SUBSCRIPTION_CONFIRMED':
+                case 'UNSUBSCRIPTION_CONFIRMED':
+                    addMessage('info', type, data);
+                    break;
+                case 'PONG':
+                    // Don't display PONG messages to reduce clutter
+                    break;
+                case 'PRICE_UPDATE':
+                    addMessage('price', type, data);
+                    break;
+                case 'SIGNAL_ALERT':
+                    addMessage('signal', type, data);
+                    break;
+                case 'FLOW_UPDATE':
+                    addMessage('flow', type, data);
+                    break;
+                case 'SENTIMENT_UPDATE':
+                    addMessage('sentiment', type, data);
+                    break;
+                case 'STATS':
+                    addMessage('info', type, data);
+                    break;
+                default:
+                    addMessage('info', type, data);
+            }
+        }
+
+        function addMessage(category, type, data) {
+            // Remove "no messages" placeholder
+            const noMessages = messages.querySelector('.no-messages');
+            if (noMessages) {
+                noMessages.remove();
+            }
+
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message message-${category}`;
+
+            const time = new Date().toLocaleTimeString();
+            let content = '';
+
+            // Format content based on message type
+            if (type === 'PRICE_UPDATE') {
+                const ticker = data.ticker || 'N/A';
+                const priceData = data.data || {};
+                content = `
+                    <strong>Ticker:</strong> ${ticker}<br>
+                    ${priceData.close ? `<strong>Close:</strong> $${priceData.close.toFixed(2)}<br>` : ''}
+                    ${priceData.volume ? `<strong>Volume:</strong> ${priceData.volume.toLocaleString()}<br>` : ''}
+                    ${priceData.change_percent !== undefined ? `<strong>Change:</strong> ${priceData.change_percent > 0 ? '📈' : '📉'} ${priceData.change_percent.toFixed(2)}%` : ''}
+                `;
+            } else if (type === 'SIGNAL_ALERT') {
+                const ticker = data.ticker || 'N/A';
+                const signalData = data.data || {};
+                const signalEmoji = signalData.signal === 'BUY' ? '🟢' : signalData.signal === 'SELL' ? '🔴' : '🟡';
+                content = `
+                    <strong>Ticker:</strong> ${ticker}<br>
+                    ${signalData.signal ? `<strong>Signal:</strong> ${signalEmoji} ${signalData.signal}<br>` : ''}
+                    ${signalData.strength ? `<strong>Strength:</strong> ${signalData.strength}<br>` : ''}
+                    ${signalData.confidence !== undefined ? `<strong>Confidence:</strong> ${(signalData.confidence * 100).toFixed(1)}%` : ''}
+                `;
+            } else if (type === 'FLOW_UPDATE') {
+                const ticker = data.ticker || 'N/A';
+                const flowData = data.data || {};
+                const flowEmoji = flowData.flow_direction === 'INFLOW' ? '⬆️' : '⬇️';
+                content = `
+                    <strong>Ticker:</strong> ${ticker}<br>
+                    ${flowData.flow_estimate !== undefined ? `<strong>Flow:</strong> $${flowData.flow_estimate.toLocaleString()}<br>` : ''}
+                    ${flowData.flow_direction ? `<strong>Direction:</strong> ${flowEmoji} ${flowData.flow_direction}` : ''}
+                `;
+            } else if (type === 'SENTIMENT_UPDATE') {
+                const ticker = data.ticker || 'N/A';
+                const sentimentData = data.data || {};
+                const sentimentEmoji = sentimentData.sentiment_score > 0.6 ? '😄' : sentimentData.sentiment_score > 0.4 ? '😐' : '😞';
+                content = `
+                    <strong>Ticker:</strong> ${ticker}<br>
+                    ${sentimentData.sentiment_score !== undefined ? `<strong>Score:</strong> ${sentimentEmoji} ${sentimentData.sentiment_score.toFixed(2)}<br>` : ''}
+                    ${sentimentData.trending !== undefined ? `<strong>Status:</strong> ${sentimentData.trending ? '🔥 TRENDING' : 'Normal'}` : ''}
+                `;
+            } else if (type === 'CONNECTION_ESTABLISHED') {
+                content = `<strong>Client ID:</strong> ${data.client_id}`;
+            } else if (type === 'SUBSCRIPTION_CONFIRMED') {
+                content = `<strong>Tickers:</strong> ${data.tickers?.join(', ') || 'N/A'}`;
+            } else if (type === 'STATS') {
+                const stats = data.data || {};
+                content = `
+                    <strong>Connections:</strong> ${stats.total_connections || 0}<br>
+                    <strong>Subscriptions:</strong> ${stats.total_subscriptions || 0}<br>
+                    <strong>Tickers:</strong> ${stats.tickers_tracked?.join(', ') || 'None'}
+                `;
+            } else {
+                content = `<pre>${JSON.stringify(data, null, 2)}</pre>`;
+            }
+
+            messageDiv.innerHTML = `
+                <div class="message-time">${time}</div>
+                <div class="message-type">${type}</div>
+                <div class="message-content">${content}</div>
+            `;
+
+            messages.appendChild(messageDiv);
+            messages.scrollTop = messages.scrollHeight;
+        }
+    </script>
+</body>
+</html>
